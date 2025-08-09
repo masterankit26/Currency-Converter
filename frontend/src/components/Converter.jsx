@@ -213,10 +213,6 @@ export default function Converter() {
             "Enter amount & pick currencies"
           )}
         </div>
-
-        <div className="mt-4 text-xs text-gray-400">
-          If this still fails: open DevTools → Console and paste the `convert response` / `latest response` logs here and I’ll debug them.
-        </div>
       </div>
     </div>
   );
