@@ -3,15 +3,8 @@ import React, { useEffect, useRef, useState } from "react";
 import CurrencySelector from "./CurrencySelector";
 import { gsap } from "gsap";
 
-/**
- * Robust converter:
- * - tries exchangerate.host (/convert -> /latest)
- * - falls back to frankfurter.app
- * - debounce, abort on change, logs raw API responses to console
- */
-
 export default function Converter() {
-  const [amount, setAmount] = useState("1"); // store as string for controlled input
+  const [amount, setAmount] = useState("1");
   const [from, setFrom] = useState("USD");
   const [to, setTo] = useState("INR");
   const [currencies, setCurrencies] = useState([]);
@@ -30,13 +23,10 @@ export default function Converter() {
     }
   }, []);
 
-  // --- fetch currency list (try exchangerate.host then frankfurter)
   useEffect(() => {
     let cancelled = false;
-
     async function loadCurrencies() {
       setError("");
-      // try exchangerate.host symbols
       try {
         const r = await fetch("https://api.exchangerate.host/symbols?v=" + Date.now());
         const d = await r.json();
@@ -44,7 +34,6 @@ export default function Converter() {
         if (!cancelled && d && d.symbols) {
           const list = Object.keys(d.symbols).sort();
           setCurrencies(list);
-          // ensure defaults exist
           if (!list.includes(from)) setFrom(list[0] || "");
           if (!list.includes(to)) setTo(list[1] || list[0] || "");
           return;
@@ -52,8 +41,6 @@ export default function Converter() {
       } catch (err) {
         console.debug("exchangerate.host symbols failed:", err);
       }
-
-      // fallback: Frankfurter currencies (two hostnames tried)
       const frankUrls = [
         "https://api.frankfurter.app/v1/currencies",
         "https://api.frankfurter.dev/v1/currencies",
@@ -75,27 +62,21 @@ export default function Converter() {
           console.debug("frankfurter currencies failed for", url, err);
         }
       }
-
       if (!cancelled) setError("Unable to load currency list (network / API).");
     }
-
     loadCurrencies();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- conversion with debounce, AbortController and provider fallbacks
   useEffect(() => {
-    // cleanup previous inflight request
     if (abortRef.current) {
       try {
         abortRef.current.abort();
       } catch {}
       abortRef.current = null;
     }
-
     const num = parseFloat(amount);
     if (!from || !to || isNaN(num) || num <= 0) {
       setResult(null);
@@ -104,17 +85,20 @@ export default function Converter() {
       else setError("");
       return;
     }
-
+    if (from === to) {
+      setResult(null);
+      setRate(null);
+      setError("Please select two different currencies.");
+      return;
+    }
     setError("");
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
     debounceRef.current = setTimeout(() => {
       (async () => {
         setLoading(true);
         const controller = new AbortController();
         abortRef.current = controller;
         const signal = controller.signal;
-
         try {
           const converted = await convertWithFallback(num, from, to, signal);
           console.debug("conversion final result:", converted);
@@ -122,7 +106,6 @@ export default function Converter() {
             setResult(converted.result);
             setRate(converted.rate ?? converted.result / num);
             setError("");
-            // small pop animation
             gsap.fromTo(
               ".result-text",
               { scale: 0.92, opacity: 0.6 },
@@ -135,9 +118,7 @@ export default function Converter() {
           }
         } catch (err) {
           console.error("convertWithFallback error:", err);
-          if (err.name === "AbortError") {
-            // ignore
-          } else {
+          if (err.name !== "AbortError") {
             setResult(null);
             setRate(null);
             setError(err.message || "Conversion failed (network/API).");
@@ -148,7 +129,6 @@ export default function Converter() {
         }
       })();
     }, 420);
-
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (abortRef.current) {
@@ -171,7 +151,6 @@ export default function Converter() {
     <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-pink-50 via-white to-indigo-50">
       <div ref={cardRef} className="max-w-lg w-full bg-white/90 p-6 rounded-2xl shadow-xl border border-gray-100">
         <h2 className="text-2xl font-bold text-pink-600 mb-4">Reliable Currency Converter</h2>
-
         <label className="block mb-3">
           <div className="text-xs text-gray-500 mb-1">Amount</div>
           <input
@@ -184,7 +163,6 @@ export default function Converter() {
             aria-label="amount"
           />
         </label>
-
         <div className="flex gap-2 items-center mb-4">
           <CurrencySelector currencies={currencies} selected={from} onChange={setFrom} ariaLabel="from currency" />
           <button
@@ -196,7 +174,6 @@ export default function Converter() {
           </button>
           <CurrencySelector currencies={currencies} selected={to} onChange={setTo} ariaLabel="to currency" />
         </div>
-
         <div className="result-text text-center text-lg font-semibold text-pink-700 min-h-[2.2rem]">
           {loading ? (
             "⏳ Converting..."
@@ -218,13 +195,8 @@ export default function Converter() {
   );
 }
 
-/* -------- convertWithFallback --------
-   tries exchangerate.host (/convert -> /latest) then frankfurter.app
-   returns { result: number, rate: number, provider: string, raw: object }
-*/
 async function convertWithFallback(num, from, to, signal) {
   const cacheBuster = `v=${Date.now()}`;
-  // 1) exchangerate.host /convert
   try {
     const url = `https://api.exchangerate.host/convert?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&amount=${encodeURIComponent(num)}&${cacheBuster}`;
     const res = await fetch(url, { signal });
@@ -236,8 +208,6 @@ async function convertWithFallback(num, from, to, signal) {
   } catch (err) {
     console.debug("exchangerate.host /convert failed:", err);
   }
-
-  // 2) exchangerate.host /latest (fallback)
   try {
     const url = `https://api.exchangerate.host/latest?base=${encodeURIComponent(from)}&symbols=${encodeURIComponent(to)}&${cacheBuster}`;
     const res = await fetch(url, { signal });
@@ -250,15 +220,11 @@ async function convertWithFallback(num, from, to, signal) {
   } catch (err) {
     console.debug("exchangerate.host /latest failed:", err);
   }
-
-  // 3) Frankfurter - try a couple of host variants
   const frankUrls = [
     `https://api.frankfurter.app/latest?amount=${encodeURIComponent(num)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     `https://api.frankfurter.dev/latest?amount=${encodeURIComponent(num)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-    // fallback: ask rate and multiply
     `https://api.frankfurter.app/latest?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
   ];
-
   for (const url of frankUrls) {
     try {
       const res = await fetch(url, { signal });
@@ -266,26 +232,19 @@ async function convertWithFallback(num, from, to, signal) {
       console.debug("frankfurter response:", url, res.status, data);
       if (data && data.rates && typeof data.rates[to] === "number") {
         const r = data.rates[to];
-        // frankfurter may include 'amount' but rates[to] is the exchange rate we use
         return { result: num * r, rate: r, provider: "frankfurter", raw: data };
       }
-      // Some frankfurter variants might return { amount, base, rates } where rates[to] gives converted amount if 'amount' used,
-      // but using rates[to] * num is safe.
     } catch (err) {
       console.debug("frankfurter attempt failed for", url, err);
     }
   }
-
-  // All attempts failed
   throw new Error("All providers failed (network, CORS, or API returned unexpected structure).");
 }
 
-// parse JSON safely with status awareness
 async function safeJson(res) {
   let text;
   try {
     text = await res.text();
-    // try parse
     return text ? JSON.parse(text) : null;
   } catch (err) {
     console.debug("JSON parse error, raw text:", text, err);
