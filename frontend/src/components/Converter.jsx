@@ -170,7 +170,7 @@ export default function Converter() {
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-pink-50 via-white to-indigo-50">
       <div ref={cardRef} className="max-w-lg w-full bg-white/90 p-6 rounded-2xl shadow-xl border border-gray-100">
-        <h2 className="text-2xl font-bold text-pink-600 mb-4">💖 Reliable Currency Converter</h2>
+        <h2 className="text-2xl font-bold text-pink-600 mb-4">Reliable Currency Converter</h2>
 
         <label className="block mb-3">
           <div className="text-xs text-gray-500 mb-1">Amount</div>
